@@ -12,7 +12,7 @@ from pydantic import BaseModel, Extra, UUID4
 from utils import parse_money
 
 # Get token from environment variables
-load_dotenv(dotenv_path='./.env')
+load_dotenv(dotenv_path='../../.env')
 
 # Define endpoint & headers
 endpoint = "https://api.up.com.au/api/v1/"
@@ -32,7 +32,7 @@ parser = ResolvingParser("https://raw.githubusercontent.com/up-banking/api/maste
 
 class Transaction(BaseModel, extra=Extra.allow):
     """ Dataclass for Up Transactions """
-    
+
     class MoneyObject(BaseModel):
         currencyCode: str  # ISO 4217
         value: str  # '[-]10.56'

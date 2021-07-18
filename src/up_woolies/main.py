@@ -1,6 +1,3 @@
-# get woolies transactions
-# find them in up
-# line by line it baby
 import datetime
 
 import up

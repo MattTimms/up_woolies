@@ -12,7 +12,7 @@ from pydantic import BaseModel, Extra, condecimal, PositiveInt
 from utils import parse_money
 
 # Get token from environment variables
-load_dotenv(dotenv_path='./.env')
+load_dotenv(dotenv_path='../../.env')
 
 # Define endpoint & headers
 endpoint = "https://api.woolworthsrewards.com.au/wx/v1/"
