@@ -1,10 +1,15 @@
 # up_woolies
 
-PoC that provides an itemised breakdown of transactions at Woolworths with Up Banking Account.
+Proof-of-concept combining APIs to provide an itemised breakdown of transactions at Woolworths with Up Banking Account. 
+The graphic below is a fantasy of how digital receipts could be presented in-app:
+
+<p align="center">
+  <img src="/imgs/demo.gif" width="35%" height="35%" />
+</p>
 
 ## motivation
 
-> _"My bank app tells me I spent $38.00 at the grocery store... I wonder what I bought."_
+> _"My bank app tells me I spent $38.00 at the grocery store... I wonder what I bought..."_
 
 I predict that banking apps will one-day provide customers with itemised receipts in-app.   
 It's a big call but when I look into my crystal ball I see;
@@ -51,7 +56,7 @@ e-receipts, which is more than I can say for their competitor, Coles' FlyBuy pro
 ## help wanted
 
 I'm holding out for Up Bank to provide API support for 2Up (& multiplayer when that is released). You can help by
-reacting to the pending [feature request PR](https://github.com/up-banking/api/issues/84) or, if you're an Upsider,
+reacting to the pending [feature request PR](https://github.com/up-banking/api/issues/84) and, if you're an Upsider,
 suggest the feature through support chat in-app 🙏
 
 I'd love help with handling Woolworth's authentication process 🔐 I spent quite some time trying to understand how

@@ -45,16 +45,3 @@ if __name__ == '__main__':
             print("bingo", up_transaction.createdAt, woolies_receipt.json())
             print(1)
 
-            # transaction_datetime = transaction.transaction_date()
-            #
-            # response = up_account.get_transactions(until=transaction_datetime + datetime.timedelta(seconds=1),
-            #                                        since=transaction_datetime)
-            # print(1)
-            # response = requests.get(url=up_account.transaction_url,
-            #                         params={
-            #                             'page[size]': 100,
-            #                             'filter[since]': transaction.transaction_date(),
-            #                             # 'filter[until]':
-            #                         },
-            #                         )
-            # response.raise_for_status()
