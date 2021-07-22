@@ -52,6 +52,20 @@ e-receipts, which is more than I can say for their competitor, Coles' FlyBuy pro
    UP_TOKEN=up:yeah:1234abcd...
    ```
 4. Look around & run some scripts, you crazy kids!
+```commandline
+$ python main.py
+
+{'date': '2020-12-31T10:13:58+11:00',
+ 'items': [{'amount': 0.94,
+            'description': 'Tomato Truss Red',
+            'quantity': None,
+            'weight': 0.242},
+           {'amount': 2.39,
+            'description': 'WW Drought Relief Whole Milk 2L',
+            'quantity': 1,
+            'weight': None},
+           ...
+```
 
 ## help wanted
 
@@ -65,12 +79,15 @@ workflow, trying to see if it matches up with some common OAuth practice.
 Obtaining a user's `client_id` & `bearer token` via `accounts.woolworthsrewards.com.au/er-login/validate-user` from
 their `email` & `pass` is the ultimate goal. Any help would be great; I'd love to learn how that works.
 
-## the graveyard of future ideas
+## the graveyard of ideas
 
 * Support OpenBanking API - _aka_ support for all banks!
     * I noticed a purchase that I made with Westpac rather than Up, and after looking through Frollo & CDR I realised
       that many more banks had begun supporting the Open Banking initiative.
     * Unfortunately, despite its affiliation with _"Consumer Data Rights"_, the process of authenticating myself with
       these CDR data holders for my _own_ consumer data is a mystery to me. If you know, then please reach out to me.
+* Talk to someone about Woolworths' API
+    * I tried reaching out to Woolworths to talk about their API: EverdayRewards support, the tech subsidiary managing 
+      the program Quantium, even cold-messaged LinkedIn people associate with WooliesX. No luck.
 * Support 2Up
     * Please read [help wanted](#help-wanted) on how you can help push for API support of 2Up.

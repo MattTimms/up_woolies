@@ -1,12 +1,16 @@
 import datetime
+import json
+from pprint import pprint
 
 import up
 import woolies
 
 
 def find_corresponding_up_transaction(woolies_transaction: woolies.Transaction) -> up.Transaction:
+    """ Returns corresponding Up Bank transaction from a Woolies transaction"""
     _up_description = 'Woolworths'  # How Up manages human-readable merchant Id for Woolworths
 
+    # Request transactions within window of the Woolies transaction
     transaction_datetime = woolies_transaction.transaction_date
     for up_transactions in up_account.get_transactions(until=transaction_datetime + datetime.timedelta(seconds=10),
                                                        since=transaction_datetime - datetime.timedelta(seconds=10)):
@@ -35,13 +39,15 @@ if __name__ == '__main__':
                       woolies_transaction.transaction_date)
                 continue
 
+            # Find Up transaction
             try:
                 up_transaction = find_corresponding_up_transaction(woolies_transaction)
             except FileNotFoundError:
                 print("couldn't find an Up Banking transaction", woolies_transaction.transaction_date)
                 continue
 
+            # Grab receipt and show
             woolies_receipt = woolies_transaction.get_receipt()
-            print("bingo", up_transaction.createdAt, woolies_receipt.json())
-            print(1)
 
+            # Print it but make it pretty
+            pprint({'date': up_transaction.createdAt.astimezone().isoformat('T'), **json.loads(woolies_receipt.json())})

@@ -36,7 +36,7 @@ class Purchase(BaseModel, extra=Extra.ignore):
     quantity: Optional[PositiveInt] = 1
     weight: Optional[condecimal(gt=Decimal(0))]
 
-    # TODO parse description for weight e.g. {'description': 'Abbotts Vil Bakery Country Grains 800g'}
+    # TODO parse weight from description e.g. {'description': 'Abbotts Vil Bakery Country Grains 800g'}
     # TODO remove leading symbols from description e.g. {'description': '#Cadbury Bar Twirl 39g'}
     # TODO what if I purchase two weighted goods separately in one transaction; I went back to the deli for more olives?
 

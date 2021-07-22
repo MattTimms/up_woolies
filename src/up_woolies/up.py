@@ -74,13 +74,6 @@ class Account:
         self.account = account
         self.transaction_url = account['relationships']['transactions']['links']['related']
 
-
-class SpendingAccount(Account):
-    name = "Up Account"
-
-    def __init__(self):
-        super().__init__(name=self.name)
-
     def get_transactions(self,
                          page_size: int = 10,
                          since: datetime = None,
@@ -98,6 +91,13 @@ class SpendingAccount(Account):
         while (url := response['links']['next']) is not None:
             response = session.get(url=url).json()
             yield [Transaction.from_response(transaction) for transaction in response['data']]
+
+
+class SpendingAccount(Account):
+    name = "Up Account"
+
+    def __init__(self):
+        super().__init__(name=self.name)
 
 
 #
