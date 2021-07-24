@@ -27,7 +27,7 @@ consumers. Surely, these platforms would benefit from having greater granularity
 purchase behaviour from knowing only the vendor & not the items.
 
 I wanted to make a proof-of-concept using Up Bank's well-documented API & one of, if not the largest Australian grocer:
-Woolworths. In short, Woolworths Everyday Rewards API is closed-source & painful to look at. However, they do provide
+Woolworths. In short, Woolworths' Everyday Rewards API is closed-source & painful to look at. However, they do provide
 customers with ✨e-receipts✨, which is more than I can say for their competitor, Coles' FlyBuy program.
 
 ## requirements
@@ -57,7 +57,7 @@ WOOLIES_TOKEN=8h41...
 UP_TOKEN=up:yeah:1234abcd...
 ```
 
-4. Run `main.py`, look around & have some fun!
+4. Run `src/up_woolies/main.py`, look around & have some fun!
 
 ```
 $ python main.py
@@ -96,6 +96,10 @@ suggest the feature through support chat in-app 🙏
 * 👩‍💼 Talk to someone about Woolworths' API
     * I tried reaching out to Woolworths to talk about their API: EverdayRewards support, Quantium (the tech subsidiary
       managing the program), even cold-messaged people on LinkedIn associate with WooliesX. No luck.
+* ⚡ Talk to someone about Up Bank's smart receipts
+    * A friend pointed out on [The Tree of Up](https://up.com.au/tree/) a leaf call _smart receipts_ & the existing
+      integration with AfterPay. It would be interesting to hear how it was implemented, & if this proof-of-concept
+      shares any similarities.
 * 👫 Support 2Up
     * Please read [help wanted](#help-wanted) on how you can help push for API support of 2Up.
 * ⚖ Interpret item weights

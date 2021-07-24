@@ -12,7 +12,8 @@ from pydantic import BaseModel, Extra, UUID4
 from utils import parse_money
 
 # Get token from environment variables
-load_dotenv(dotenv_path='../../.env')
+for fp in ['../../.env', '.env']:
+    load_dotenv(dotenv_path=fp)
 
 # Define endpoint & headers
 endpoint = "https://api.up.com.au/api/v1/"

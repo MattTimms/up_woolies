@@ -12,7 +12,8 @@ from pydantic import BaseModel, Extra, condecimal, PositiveInt
 from utils import parse_money
 
 # Get token from environment variables
-load_dotenv(dotenv_path='../../.env')
+for fp in ['../../.env', '.env']:
+    load_dotenv(dotenv_path=fp)
 
 # Define endpoint & headers
 endpoint = "https://api.woolworthsrewards.com.au/wx/v1/"
@@ -24,9 +25,6 @@ session.headers.update({
 session.hooks = {
     'response': lambda r, *args, **kwargs: r.raise_for_status()
 }
-
-
-# TODO support for Woolies' partners e.g. BWS, BigW, etc
 
 
 class Purchase(BaseModel, extra=Extra.ignore):
