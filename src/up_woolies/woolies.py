@@ -1,5 +1,6 @@
 import os
 import re
+import warnings
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Any, Generator, Optional
@@ -8,23 +9,75 @@ from urllib.parse import urljoin
 import requests
 from dotenv import load_dotenv
 from pydantic import BaseModel, Extra, condecimal, PositiveInt
+from rich.console import Console
+from rich.prompt import Prompt
 
-from utils import parse_money
+from utils import DefaultTimeoutAdapter, parse_money
 
 # Get token from environment variables
 for fp in ['../../.env', '.env']:
     load_dotenv(dotenv_path=fp)
 
 # Define endpoint & headers
-endpoint = "https://api.woolworthsrewards.com.au/wx/v1/"
+endpoint = "https://api.woolworthsrewards.com.au/wx/"
 session = requests.session()
+session.mount('https://', DefaultTimeoutAdapter(timeout=5))
 session.headers.update({
-    'client_id': os.environ['WOOLIES_CLIENT_ID'],
-    'Authorization': f"Bearer {os.environ['WOOLIES_TOKEN']}"
+    'client_id': '8h41mMOiDULmlLT28xKSv5ITpp3XBRvH',  # some universal client API ID key
+    'User-Agent': 'up_woolies'  # some User-Agent
 })
 session.hooks = {
     'response': lambda r, *args, **kwargs: r.raise_for_status()
 }
+
+
+def __init():
+    if (email := os.getenv('WOOLIES_EMAIL')) is not None and (password := os.getenv('WOOLIES_PASS')):
+        auth = Auth.login(email, password)  # TODO implement token refresh
+    elif (token := os.getenv('WOOLIES_TOKEN')) is not None:
+        warnings.warn("WOOLIES_TOKEN is deprecated, use WOOLIES_[EMAIL|PASS] instead", DeprecationWarning)
+        session.headers.update({'Authorization': f"Bearer {token}"})
+        return
+    else:
+        auth = Auth.login_cli()  # TODO implement token refresh
+    session.headers.update({'Authorization': f"Bearer {auth.bearer}"})
+
+
+class Auth(BaseModel):
+    bearer: str
+    refresh: str
+    bearerExpiredInSeconds: int
+    refreshExpiredInSeconds: int
+    passwordResetRequired: bool
+
+    @classmethod
+    def login(cls, email: str, password: str):
+        url = urljoin(endpoint, 'v2/security/login/rewards')
+        body = {'username': email, 'password': password}  # email/pass
+        res = session.post(url=url, json=body)
+        return cls.parse_obj(res.json()['data'])
+
+    @classmethod
+    def login_cli(cls):
+        Console().print('Woolworths Login')
+        email = Prompt.ask("Email")
+        password = Prompt.ask("Password", password=True)
+        return cls.login(email, password)  # TODO retry bad pass
+
+    def refresh_token(self):
+        url = urljoin(endpoint, 'v2/security/refreshLogin')
+        body = {'refresh_token': self.refresh}
+        res = session.post(url=url, json=body)
+
+        _auth = self.parse_obj(res.json()['data'])
+        for attr in self.__annotations__.keys():
+            setattr(self, attr, getattr(_auth, attr))
+        return self
+
+
+# N.B. new login options are disabled as explain in changelog
+# __init()
+session.headers.update({'Authorization': f"Bearer {os.environ['WOOLIES_TOKEN']}"})
 
 
 class Purchase(BaseModel, extra=Extra.ignore):
@@ -134,8 +187,8 @@ class Transaction(BaseModel, extra=Extra.allow):
 
 
 def list_transactions(page: int = 0) -> Generator[List[Transaction], None, None]:
-    """ Yields list of Transactions for global Woolies account """
-    url = urljoin(endpoint, 'rewards/member/ereceipts/transactions/list')
+    """ Yields list ("page") of Transactions for global Woolies account """
+    url = urljoin(endpoint, 'v1/rewards/member/ereceipts/transactions/list')
     while True:
         page += 1  # Endpoint indexes at 1
         response = session.get(url=url, params={"page": page})
@@ -146,7 +199,7 @@ def list_transactions(page: int = 0) -> Generator[List[Transaction], None, None]
 
 
 def get_receipt(receipt_key: str) -> ReceiptDetails:
-    url = urljoin(endpoint, 'rewards/member/ereceipts/transactions/details')
+    url = urljoin(endpoint, 'v1/rewards/member/ereceipts/transactions/details')
     body = {"receiptKey": receipt_key}
     response = session.post(url=url, json=body)
     return ReceiptDetails.from_raw(response.json()['data'])

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from prance import ResolvingParser
 from pydantic import BaseModel, Extra, UUID4
 
-from utils import parse_money
+from utils import DefaultTimeoutAdapter, parse_money
 
 # Get token from environment variables
 for fp in ['../../.env', '.env']:
@@ -18,6 +18,7 @@ for fp in ['../../.env', '.env']:
 # Define endpoint & headers
 endpoint = "https://api.up.com.au/api/v1/"
 session = requests.session()
+session.mount('https://', DefaultTimeoutAdapter(timeout=5))
 session.headers.update({
     "Authorization": f"Bearer {os.environ['UP_TOKEN']}"
 })
@@ -64,13 +65,22 @@ class Transaction(BaseModel, extra=Extra.allow):
 class Account:
     """ Base account class """
 
-    def __init__(self, name: str):
+    def __init__(self, *,
+                 display_name: str,
+                 account_type: Literal['TRANSACTIONAL', 'SAVER'] = None,
+                 ownership_type: Literal['INDIVIDUAL', 'JOINT'] = None):
+        attributes = {k: v for k, v in {
+            'displayName': display_name,
+            'accountType': account_type,
+            'ownershipType': ownership_type,
+        }.items() if v is not None}
+
         # Find account details by name
         for account in list_accounts():
-            if name in account['attributes']['displayName']:
+            if attributes.items() <= account['attributes'].items():
                 break
         else:
-            raise ValueError(f"could not find account {name=}")
+            raise ValueError(f"could not find account matching {attributes=}")
 
         self.account = account
         self.transaction_url = account['relationships']['transactions']['links']['related']
@@ -78,13 +88,15 @@ class Account:
     def get_transactions(self,
                          page_size: int = 10,
                          since: datetime = None,
-                         until: datetime = None) -> Generator[List[Transaction], None, None]:
+                         until: datetime = None,
+                         category: str = None) -> Generator[List[Transaction], None, None]:
         """ Yields list of transactions based off input filters """
         response = session.get(url=self.transaction_url,
                                params={
                                    'page[size]': page_size,
                                    'filter[since]': since.astimezone().isoformat('T') if since is not None else since,
                                    'filter[until]': until.astimezone().isoformat('T') if until is not None else until,
+                                   'filter[category]': category
                                }).json()
         yield [Transaction.from_response(transaction) for transaction in response['data']]
 
@@ -95,10 +107,13 @@ class Account:
 
 
 class SpendingAccount(Account):
-    name = "Up Account"
-
     def __init__(self):
-        super().__init__(name=self.name)
+        super().__init__(display_name='Spending', account_type='TRANSACTIONAL', ownership_type='INDIVIDUAL')
+
+
+class TwoUpAccount(Account):
+    def __init__(self):
+        super().__init__(display_name='2Up Spending', account_type='TRANSACTIONAL', ownership_type='JOINT')
 
 
 #

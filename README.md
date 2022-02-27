@@ -42,7 +42,7 @@ customers with ✨e-receipts✨, which is more than I can say for their competit
 1. Head to [Up Banking's API](https://developer.up.com.au/#welcome) page & grab your personal API token
 2. Login to [Woolworth's Everyday Rewards](https://www.woolworthsrewards.com.au/#login) site & navigate around with
    dev-tools monitoring network traffic. Filter network traffic with `api.woolworthsrewards.com.au` & find any request
-   that has `client_id` & `authorization` headers.
+   that has `authorization` header.
    <p align="center">
     <img src="/imgs/headers.jpg" />
    </p>
@@ -52,7 +52,6 @@ customers with ✨e-receipts✨, which is more than I can say for their competit
 3. Copy `.env.example` to `.env` & place those three tokens inside:
 
 ```
-WOOLIES_CLIENT_ID=cXDN...
 WOOLIES_TOKEN=8h41...
 UP_TOKEN=up:yeah:1234abcd...
 ```
@@ -93,13 +92,19 @@ suggest the feature through support chat in-app 🙏
       that many more banks had begun supporting Open Banking than when I last checked.
     * Unfortunately, despite the title _"Consumer Data Rights"_, the process of authenticating myself with these CDR
       data holders for my _own_ consumer data is a mystery to me. If you know, then please reach out to me.
+    * [Update] I've learnt that the support/access I'm looking for fell outside the scope of CDR, and banks have no
+      obligation to support it. I would have to hold out for Data Holders or Recipients to provide.
 * 👩‍💼 Talk to someone about Woolworths' API
     * I tried reaching out to Woolworths to talk about their API: EverdayRewards support, Quantium (the tech subsidiary
       managing the program), even cold-messaged people on LinkedIn associate with WooliesX. No luck.
+    * [Update] A login endpoint was shared to me via the repo's issues. It worked like a charm, allowing user/pass
+      flows. However, it suddenly started returning 403s & I have yet to find a solution.
 * ⚡ Talk to someone about Up Bank's smart receipts
     * A friend pointed out on [The Tree of Up](https://up.com.au/tree/) a leaf call _smart receipts_ & the existing
       integration with AfterPay. It would be interesting to hear how it was implemented, & if this proof-of-concept
       shares any similarities.
+    * [Update] Dom, Co-founder of Up, gave some insight about Up
+      Bank's [smart receipts](https://twitter.com/dompym/status/1418792235559235589) integration with AfterPay
 * 👫 Support 2Up
     * Please read [help wanted](#help-wanted) on how you can help push for API support of 2Up.
 * ⚖ Interpret item weights

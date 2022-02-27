@@ -1,19 +1,25 @@
 import datetime
 import json
-from pprint import pprint
+from rich import print
 
 import up
 import woolies
 
 
+up_account = up.SpendingAccount()
+# two_up_account = up.TwoUpAccount()
+
+
 def find_corresponding_up_transaction(woolies_transaction: woolies.Transaction) -> up.Transaction:
     """ Returns corresponding Up Bank transaction from a Woolies transaction"""
+    _up_category = 'groceries'
     _up_description = 'Woolworths'  # How Up manages human-readable merchant Id for Woolworths
 
     # Request transactions within window of the Woolies transaction
     transaction_datetime = woolies_transaction.transaction_date
     for up_transactions in up_account.get_transactions(until=transaction_datetime + datetime.timedelta(seconds=10),
-                                                       since=transaction_datetime - datetime.timedelta(seconds=10)):
+                                                       since=transaction_datetime - datetime.timedelta(seconds=10),
+                                                       category=_up_category):
         for up_transaction in up_transactions:
             # Validate transactions match
             is_merchant_woolies = up_transaction.description == _up_description
@@ -26,9 +32,7 @@ def find_corresponding_up_transaction(woolies_transaction: woolies.Transaction) 
         raise FileNotFoundError("could not find corresponding transaction with up bank")
 
 
-if __name__ == '__main__':
-
-    up_account = up.SpendingAccount()
+def example():
 
     for transactions in woolies.list_transactions():
         for woolies_transaction in transactions:
@@ -50,4 +54,8 @@ if __name__ == '__main__':
             woolies_receipt = woolies_transaction.get_receipt()
 
             # Print it but make it pretty
-            pprint({'date': up_transaction.createdAt.astimezone().isoformat('T'), **json.loads(woolies_receipt.json())})
+            print({'date': up_transaction.createdAt.astimezone().isoformat('T'), **json.loads(woolies_receipt.json())})
+
+
+if __name__ == '__main__':
+    example()
