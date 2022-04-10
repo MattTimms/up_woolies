@@ -4,27 +4,21 @@ from decimal import Decimal
 from typing import Dict, List, Generator, Any, Literal, Optional
 from urllib.parse import urljoin
 
-import requests
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from prance import ResolvingParser
 from pydantic import BaseModel, Extra, UUID4
 
-from utils import DefaultTimeoutAdapter, parse_money
+from utils import new_session, parse_money
 
 # Get token from environment variables
-for fp in ['../../.env', '.env']:
-    load_dotenv(dotenv_path=fp)
+load_dotenv(dotenv_path=find_dotenv())
 
 # Define endpoint & headers
 endpoint = "https://api.up.com.au/api/v1/"
-session = requests.session()
-session.mount('https://', DefaultTimeoutAdapter(timeout=5))
+session = new_session()
 session.headers.update({
     "Authorization": f"Bearer {os.environ['UP_TOKEN']}"
 })
-session.hooks = {
-    'response': lambda r, *args, **kwargs: r.raise_for_status()
-}
 
 parser = ResolvingParser("https://raw.githubusercontent.com/up-banking/api/master/v1/openapi.json")
 
@@ -62,6 +56,9 @@ class Transaction(BaseModel, extra=Extra.allow):
         return parse_money(self.amount.value)
 
 
+DEFAULT_PAGE_SIZE = 30
+
+
 class Account:
     """ Base account class """
 
@@ -86,7 +83,7 @@ class Account:
         self.transaction_url = account['relationships']['transactions']['links']['related']
 
     def get_transactions(self,
-                         page_size: int = 10,
+                         page_size: int = DEFAULT_PAGE_SIZE,
                          since: datetime = None,
                          until: datetime = None,
                          category: str = None) -> Generator[List[Transaction], None, None]:
@@ -114,6 +111,44 @@ class SpendingAccount(Account):
 class TwoUpAccount(Account):
     def __init__(self):
         super().__init__(display_name='2Up Spending', account_type='TRANSACTIONAL', ownership_type='JOINT')
+
+
+class AllSpendingAccounts:
+    """ Class for managing multiple transactional accounts; i.e. individual & joint accounts. """
+    def __init__(self):
+        self._accounts = [account for account in list_accounts()
+                          if account['attributes']['accountType'] == 'TRANSACTIONAL']
+        self._account_ids = [account['id'] for account in self._accounts]
+
+    def get_transactions(self,
+                         page_size: int = DEFAULT_PAGE_SIZE,
+                         since: datetime = None,
+                         until: datetime = None,
+                         category: str = None) -> Generator[List[Transaction], None, None]:
+        """
+        Yields list of transactions based off input filters.
+
+        Note: this method gets from all accounts & then filters down, unlike the base `Account` class which requests
+        from the accounts transaction-url. Preliminary tests show this approach is faster than chaining individual
+        account generators & guarantees ordered transactions.
+        """
+        response = session.get(url=urljoin(endpoint, 'transactions'),
+                               params={
+                                   'page[size]': page_size,
+                                   'filter[since]': since.astimezone().isoformat('T') if since is not None else since,
+                                   'filter[until]': until.astimezone().isoformat('T') if until is not None else until,
+                                   'filter[category]': category
+                               }).json()
+        yield [Transaction.from_response(transaction)
+               for transaction in response['data']
+               if transaction['relationships']['account']['data']['id'] in self._account_ids]
+
+        # Continue with pagination link
+        while (url := response['links']['next']) is not None:
+            response = session.get(url=url).json()
+            yield [Transaction.from_response(transaction)
+                   for transaction in response['data']
+                   if transaction['relationships']['account']['data']['id'] in self._account_ids]
 
 
 #

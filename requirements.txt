@@ -2,4 +2,4 @@ python-dotenv==0.17.1
 requests==2.25.1
 rich==11.2.0
 prance[osv]==0.21.2
-pydantic==1.8.2
+pydantic==1.9.0

@@ -1,13 +1,14 @@
 import datetime
 import json
+import time
+
 from rich import print
 
 import up
 import woolies
 
 
-up_account = up.SpendingAccount()
-# two_up_account = up.TwoUpAccount()
+up_accounts = up.AllSpendingAccounts()
 
 
 def find_corresponding_up_transaction(woolies_transaction: woolies.Transaction) -> up.Transaction:
@@ -17,13 +18,13 @@ def find_corresponding_up_transaction(woolies_transaction: woolies.Transaction) 
 
     # Request transactions within window of the Woolies transaction
     transaction_datetime = woolies_transaction.transaction_date
-    for up_transactions in up_account.get_transactions(until=transaction_datetime + datetime.timedelta(seconds=10),
-                                                       since=transaction_datetime - datetime.timedelta(seconds=10),
-                                                       category=_up_category):
+    for up_transactions in up_accounts.get_transactions(since=transaction_datetime - datetime.timedelta(seconds=10),
+                                                        until=transaction_datetime + datetime.timedelta(seconds=10),
+                                                        category=_up_category):
         for up_transaction in up_transactions:
             # Validate transactions match
             is_merchant_woolies = up_transaction.description == _up_description
-            is_money_spent_equal = up_transaction.value == woolies_transaction.value
+            is_money_spent_equal = up_transaction.value == woolies_transaction.total_paid
             if is_merchant_woolies and is_money_spent_equal:
                 return up_transaction
         else:
@@ -51,7 +52,7 @@ def example():
                 continue
 
             # Grab receipt and show
-            woolies_receipt = woolies_transaction.get_receipt()
+            woolies_receipt = woolies_transaction.receipt
 
             # Print it but make it pretty
             print({'date': up_transaction.createdAt.astimezone().isoformat('T'), **json.loads(woolies_receipt.json())})

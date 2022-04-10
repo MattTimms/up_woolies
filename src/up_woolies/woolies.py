@@ -6,29 +6,23 @@ from decimal import Decimal
 from typing import Dict, List, Any, Generator, Optional
 from urllib.parse import urljoin
 
-import requests
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from pydantic import BaseModel, Extra, condecimal, PositiveInt
 from rich.console import Console
 from rich.prompt import Prompt
 
-from utils import DefaultTimeoutAdapter, parse_money
+from utils import parse_money, new_session
 
 # Get token from environment variables
-for fp in ['../../.env', '.env']:
-    load_dotenv(dotenv_path=fp)
+load_dotenv(dotenv_path=find_dotenv())
 
 # Define endpoint & headers
 endpoint = "https://api.woolworthsrewards.com.au/wx/"
-session = requests.session()
-session.mount('https://', DefaultTimeoutAdapter(timeout=5))
+session = new_session()
 session.headers.update({
     'client_id': '8h41mMOiDULmlLT28xKSv5ITpp3XBRvH',  # some universal client API ID key
     'User-Agent': 'up_woolies'  # some User-Agent
 })
-session.hooks = {
-    'response': lambda r, *args, **kwargs: r.raise_for_status()
-}
 
 
 def __init():
@@ -80,7 +74,7 @@ class Auth(BaseModel):
 session.headers.update({'Authorization': f"Bearer {os.environ['WOOLIES_TOKEN']}"})
 
 
-class Purchase(BaseModel, extra=Extra.ignore):
+class PurchaseItem(BaseModel, extra=Extra.ignore):
     """ Dataclass of an unique purchased item """
     description: str
     amount: condecimal(gt=Decimal(0), decimal_places=2)
@@ -88,14 +82,26 @@ class Purchase(BaseModel, extra=Extra.ignore):
     weight: Optional[condecimal(gt=Decimal(0))]
 
     # TODO parse weight from description e.g. {'description': 'Abbotts Vil Bakery Country Grains 800g'}
-    # TODO remove leading symbols from description e.g. {'description': '#Cadbury Bar Twirl 39g'}
+    # TODO learn why certain items have leading symbols in description e.g. {'description': '#Cadbury Bar Twirl 39g'}
     # TODO what if I purchase two weighted goods separately in one transaction; I went back to the deli for more olives?
+
+
+# Receipt-parsing regex patterns
+PATTERN_MULTIPLE = re.compile(r'Qty (\d+) @ \$\d+\.\d+ each')  # e.g. 'Qty 2 @ $6.00 each'
+PATTERN_WEIGHTED = re.compile(r'(\d+\.\d+) kg NET @ \$\d+\.\d+/kg')  # e.g. '0.716 kg NET @ $4.00/kg'
+PATTERN_PRICE_REDUCED = re.compile(r'PRICE REDUCED BY \$\d+\.\d+(?: each|/kg)')  # e.g. PRICE REDUCED BY $3.15 each
+PATTERN_CARD_PAYMENT = re.compile(r'X-\d{4}|EFT')  # e.g. X-1234 or EFT
 
 
 class ReceiptDetails(BaseModel):
     """ Parsed-receipt items for a single transaction """
     # N.B. everything you see on a physical receipt is available from Woolies API
-    items: List[Purchase]
+    items: List[PurchaseItem]
+    value: Decimal  # value of items purchased
+    amount_paid: Decimal  # Amount paid by card/cash (considering gift-cards &/or other discounts)
+
+    class Config:
+        fields = {'value': {'exclude': True}}
 
     @classmethod
     def from_raw(cls, response: Dict[str, Any]):
@@ -106,33 +112,46 @@ class ReceiptDetails(BaseModel):
 
         :param response: data response from receipt endpoint; i.e. the return from get_receipt().
         """
-        # Navigate down to the response's receipt detail items
-        receipt_detail_items = next(filter(lambda x: x['__typename'] == 'ReceiptDetailsItems',
-                                           response['receiptDetails']['details']))
-        items: List[Dict[str, Any]] = receipt_detail_items['items']  # Note: list is ordered for purchase readability
+        receipt_details_dict: Dict[str, Any] = {x['__typename']: x for x in response['receiptDetails']['details']}
 
-        skip_to = 0
-        purchases: List[Purchase] = []
-        pattern_multiple = re.compile(r'Qty (\d+) @ \$\d+\.\d+ each')  # e.g. 'Qty 2 @ $6.00 each'
-        pattern_weighted = re.compile(r'(\d+\.\d+) kg NET @ \$\d+\.\d+/kg')  # e.g. '0.716 kg NET @ $4.00/kg'
+        # Navigate down to the response's receipt detail items & payment summaries
+        items: List[Dict[str, Any]] = receipt_details_dict['ReceiptDetailsItems']['items']  # Note: list is ordered
+        total_value = parse_money(receipt_details_dict['ReceiptDetailsTotal']['total'])
+
+        # Find payment amount (may differ from owed amount if discounts are applied)
+        receipt_detail_payments = receipt_details_dict['ReceiptDetailsPayments']['payments']
+        try:
+            amount_paid = parse_money(next(filter(lambda payment: PATTERN_CARD_PAYMENT.match(payment['description']),
+                                                  receipt_detail_payments))['amount'])
+        except StopIteration:
+            warnings.warn('unsupported payment method')
+            amount_paid = total_value  # stopgap for cash-purchases or other edge-cases
 
         # Parse receipt items
+        skip_to = 0
+        purchases: List[PurchaseItem] = []
         for i, item in enumerate(items):
             if i < skip_to:
                 continue
 
             # Handle multi-line receipt item
-            if item['amount'] == '':
+            if (amount := item['amount']) == '':
                 skip_to = i + 2
 
-                next_item = items[i + 1]
+                # Get next item
+                try:
+                    next_item = items[i + 1]
+                except IndexError:
+                    if PATTERN_PRICE_REDUCED.match(item['description']):
+                        break  # Safe to ignore
+                    raise ValueError("unforeseen edge case")
 
                 # Handle purchase of multiple identical items
-                if pattern_multiple.match(next_item_desc := next_item['description']):
-                    quantity = pattern_multiple.findall(next_item_desc)[0]
-                    purchase = Purchase(description=item['description'],
-                                        amount=next_item['amount'],
-                                        quantity=quantity)
+                if PATTERN_MULTIPLE.match(next_item_desc := next_item['description']):
+                    quantity = PATTERN_MULTIPLE.findall(next_item_desc)[0]
+                    purchase = PurchaseItem(description=item['description'],
+                                            amount=next_item['amount'],
+                                            quantity=quantity)
 
                     # Amend for any discounts for multiple identical items purchased
                     if i + 2 < len(items):
@@ -142,46 +161,65 @@ class ReceiptDetails(BaseModel):
                             skip_to += 1
 
                 # Handle purchase of weighted item; e.g. fruit, veg, & deli
-                elif pattern_weighted.match(next_item_desc):
-                    weight = pattern_weighted.findall(next_item_desc)[0]
-                    purchase = Purchase(description=item['description'],
-                                        amount=next_item['amount'],
-                                        weight=weight,
-                                        quantity=None)
+                elif PATTERN_WEIGHTED.match(next_item_desc):
+                    weight = PATTERN_WEIGHTED.findall(next_item_desc)[0]
+                    purchase = PurchaseItem(description=item['description'],
+                                            amount=next_item['amount'],
+                                            weight=weight,
+                                            quantity=None)
 
+                # Ignore "price reduced" message in receipt
+                elif PATTERN_PRICE_REDUCED.match(item['description']):
+                    skip_to = i + 1  # don't skip next item
+                    continue
                 else:
-                    raise  # unforeseen edge case
+                    raise ValueError("unforeseen edge case")
+            elif float(amount) < 0:
+                # Usually a discount
+                continue
             else:
-                purchase = Purchase(**item)
+                purchase = PurchaseItem(**item)
             purchases.append(purchase)
 
-        return cls(items=purchases)
+        return cls(items=purchases, value=total_value, amount_paid=amount_paid)
+
+
+PATTERN_BIG_W_PARTNER = re.compile(r'\d{4} BIG W .+')
 
 
 class Transaction(BaseModel, extra=Extra.allow):
     # N.B there's a lot of inconsistency across woolies' partners in how to store data; this class tries to handle that
 
-    displayName: str  # e.g. '3127 Balwyn', 'Balwyn', 'Caltex Woolworths / EG Balwyn'
+    displayName: str  # e.g. '3127 Balwyn', 'Balwyn', 'Caltex Woolworths / EG Balwyn', '0368 BIG W Doncaster'
     storeName: str  # almost always the same as displayName
     storeNo: str  # e.g. '3127', '0'
-    totalSpent: str  # e.g. '$11.40', '26.85'
+    totalSpent: str  # e.g. '$11.40', '26.85'. Note: this is a misnomer; this is cost of items, not amount paid.
     totalPointsEarned: str  # e.g. '12', '38.00'
     date: str  # e.g. '16/02/2021'
-    transactionDate: str  # e.g. 2020-08-04 18:39:23
+    transactionDate: datetime  # e.g. 2020-08-04 18:39:23
     receiptKey: str  # e.g. 'U2FsdGVkX1+Q7oGFwGPJJxgRw...+GkBizWJbCu9QwZ+1+GFqM6/58w55k='
     basketKey: str  # 20200804183836062051773127 date|time|...|storeno
 
-    def get_receipt(self) -> ReceiptDetails:
-        return get_receipt(self.receiptKey)
+    @property
+    def receipt(self) -> ReceiptDetails:
+        receipt = self.__dict__.get('_receipt')
+        if receipt is None:
+            receipt = get_receipt(self.receiptKey)
+            self.__dict__['_receipt'] = receipt
+        return receipt
 
     @property
     def transaction_date(self) -> datetime:  # 2020-01-02T03:04:05+10:00
-        return datetime.strptime(self.transactionDate, '%Y-%m-%d %H:%M:%S').astimezone()
+        return self.transactionDate.astimezone()
 
     @property
-    def value(self) -> Decimal:
-        return parse_money(self.totalSpent)
+    def total_paid(self) -> Decimal:
+        """ Amount paid; may vary from cost of items as gift-cards/discounts may be applied. """
+        return self.receipt.amount_paid
 
+    @property
+    def is_big_w(self) -> bool:
+        return PATTERN_BIG_W_PARTNER.match(self.displayName) is not None
 
 #
 
@@ -205,9 +243,10 @@ def get_receipt(receipt_key: str) -> ReceiptDetails:
     return ReceiptDetails.from_raw(response.json()['data'])
 
 
+#
+
 if __name__ == '__main__':
     transactions = [y for x in list_transactions() for y in x]
     for trans in transactions:
         if trans.receiptKey != '':  # Ignore partners w/o receipt data
-            trans.get_receipt()
-            print(trans.basketKey, trans.transactionDate, trans)
+            print(trans.basketKey, trans.transaction_date, trans.total_paid, trans.json())

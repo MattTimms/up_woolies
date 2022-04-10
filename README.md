@@ -79,7 +79,10 @@ I'd love help with handling Woolworth's authentication process 🔐 I spent quit
 Woolworth's authentication endpoint operates - reading client-side js files, figuring out their device-fingerprint
 workflow, trying to see if it matches up with some common OAuth practice.  
 Obtaining a user's `client_id` & `bearer token` via `accounts.woolworthsrewards.com.au/er-login/validate-user` from
-their `email` & `pass` is the ultimate goal. Any help would be great; I'd love to learn how that works.
+their `email` & `pass` is the ultimate goal. Any help would be great; I'd love to learn how that works. I'm interested 
+in a http-request solution rather than simulating a browser; e.g. selenium, playwright, etc.  
+[Update] A login endpoint was shared to me via the repo's issues. It worked like a charm, allowing user/pass flows.
+However, it suddenly started returning 403s & I have yet to find a work-around.
 
 I'm holding out for Up Bank to provide API support for 2Up (& multiplayer when that is released). You can help by
 reacting to the pending [feature request PR](https://github.com/up-banking/api/issues/84) and, if you're an Upsider,
@@ -97,8 +100,6 @@ suggest the feature through support chat in-app 🙏
 * 👩‍💼 Talk to someone about Woolworths' API
     * I tried reaching out to Woolworths to talk about their API: EverdayRewards support, Quantium (the tech subsidiary
       managing the program), even cold-messaged people on LinkedIn associate with WooliesX. No luck.
-    * [Update] A login endpoint was shared to me via the repo's issues. It worked like a charm, allowing user/pass
-      flows. However, it suddenly started returning 403s & I have yet to find a solution.
 * ⚡ Talk to someone about Up Bank's smart receipts
     * A friend pointed out on [The Tree of Up](https://up.com.au/tree/) a leaf call _smart receipts_ & the existing
       integration with AfterPay. It would be interesting to hear how it was implemented, & if this proof-of-concept
