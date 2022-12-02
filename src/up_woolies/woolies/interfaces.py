@@ -3,75 +3,14 @@ import re
 import warnings
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Any, Generator, Optional
+from typing import Optional, List, Dict, Any, Literal, Generator
 from urllib.parse import urljoin
 
-from dotenv import find_dotenv, load_dotenv
+from dateutil.relativedelta import relativedelta
 from pydantic import BaseModel, Extra, condecimal, PositiveInt
-from rich.console import Console
-from rich.prompt import Prompt
 
-from utils import parse_money, new_session
-
-# Get token from environment variables
-load_dotenv(dotenv_path=find_dotenv())
-
-# Define endpoint & headers
-endpoint = "https://api.woolworthsrewards.com.au/wx/"
-session = new_session()
-session.headers.update({
-    'client_id': '8h41mMOiDULmlLT28xKSv5ITpp3XBRvH',  # some universal client API ID key
-    'User-Agent': 'up_woolies'  # some User-Agent
-})
-
-
-def __init():
-    if (email := os.getenv('WOOLIES_EMAIL')) is not None and (password := os.getenv('WOOLIES_PASS')):
-        auth = Auth.login(email, password)  # TODO implement token refresh
-    elif (token := os.getenv('WOOLIES_TOKEN')) is not None:
-        warnings.warn("WOOLIES_TOKEN is deprecated, use WOOLIES_[EMAIL|PASS] instead", DeprecationWarning)
-        session.headers.update({'Authorization': f"Bearer {token}"})
-        return
-    else:
-        auth = Auth.login_cli()  # TODO implement token refresh
-    session.headers.update({'Authorization': f"Bearer {auth.bearer}"})
-
-
-class Auth(BaseModel):
-    bearer: str
-    refresh: str
-    bearerExpiredInSeconds: int
-    refreshExpiredInSeconds: int
-    passwordResetRequired: bool
-
-    @classmethod
-    def login(cls, email: str, password: str):
-        url = urljoin(endpoint, 'v2/security/login/rewards')
-        body = {'username': email, 'password': password}  # email/pass
-        res = session.post(url=url, json=body)
-        return cls.parse_obj(res.json()['data'])
-
-    @classmethod
-    def login_cli(cls):
-        Console().print('Woolworths Login')
-        email = Prompt.ask("Email")
-        password = Prompt.ask("Password", password=True)
-        return cls.login(email, password)  # TODO retry bad pass
-
-    def refresh_token(self):
-        url = urljoin(endpoint, 'v2/security/refreshLogin')
-        body = {'refresh_token': self.refresh}
-        res = session.post(url=url, json=body)
-
-        _auth = self.parse_obj(res.json()['data'])
-        for attr in self.__annotations__.keys():
-            setattr(self, attr, getattr(_auth, attr))
-        return self
-
-
-# N.B. new login options are disabled as explain in changelog
-# __init()
-session.headers.update({'Authorization': f"Bearer {os.environ['WOOLIES_TOKEN']}"})
+from .api import session, endpoint, gql_client, fetch_transaction_query
+from utils import parse_money
 
 
 class PurchaseItem(BaseModel, extra=Extra.ignore):
@@ -97,11 +36,19 @@ class ReceiptDetails(BaseModel):
     """ Parsed-receipt items for a single transaction """
     # N.B. everything you see on a physical receipt is available from Woolies API
     items: List[PurchaseItem]
-    value: Decimal  # value of items purchased
+    value: Decimal  # Value of items purchased
     amount_paid: Decimal  # Amount paid by card/cash (considering gift-cards &/or other discounts)
+    date: Optional[datetime]  # Datetime of payment transaction
 
     class Config:
         fields = {'value': {'exclude': True}}
+
+    @classmethod
+    def get_receipt(cls, receipt_key: str):
+        url = urljoin(endpoint, 'v1/rewards/member/ereceipts/transactions/details')
+        body = {"receiptKey": receipt_key}
+        response = session.post(url=url, json=body)
+        return ReceiptDetails.from_raw(response.json()['data'])
 
     @classmethod
     def from_raw(cls, response: Dict[str, Any]):
@@ -113,6 +60,12 @@ class ReceiptDetails(BaseModel):
         :param response: data response from receipt endpoint; i.e. the return from get_receipt().
         """
         receipt_details_dict: Dict[str, Any] = {x['__typename']: x for x in response['receiptDetails']['details']}
+
+        # Parse transaction payment datetime
+        transaction_date = None
+        if (date_raw := re.search('POS\s{2}\d{3}\s{2}TRANS\s{2}\d{4}\s{3}(.+)',
+                                  receipt_details_dict['ReceiptDetailsFooter']['transactionDetails'])) is not None:
+            transaction_date = datetime.strptime(date_raw.groups()[0], '%H:%M  %d/%m/%Y')
 
         # Navigate down to the response's receipt detail items & payment summaries
         items: List[Dict[str, Any]] = receipt_details_dict['ReceiptDetailsItems']['items']  # Note: list is ordered
@@ -181,72 +134,98 @@ class ReceiptDetails(BaseModel):
                 purchase = PurchaseItem(**item)
             purchases.append(purchase)
 
-        return cls(items=purchases, value=total_value, amount_paid=amount_paid)
+        return cls(items=purchases, value=total_value, amount_paid=amount_paid, date=transaction_date)
 
 
-PATTERN_BIG_W_PARTNER = re.compile(r'\d{4} BIG W .+')
+_two_months_ago = datetime.today() - relativedelta(months=2)
 
 
 class Transaction(BaseModel, extra=Extra.allow):
-    # N.B there's a lot of inconsistency across woolies' partners in how to store data; this class tries to handle that
+    id: str
+    origin: str  # Store Name, e.g. 'Blackburn North', 'Doncaster Shopping Town BWS'
+    value: Decimal  # '11.40'
+    date: datetime  # Note this may vary from eftpos transaction date by several minutes
+    description: str  # '$11.40 at Blackburn North'
+    receiptId: Optional[str]  # Note some partners do not support e-receipts; e.g. EG petrol
+    transactionType: str  # 'purchase' there could be others
+    partner: Literal['woolworths', 'bws', 'bigw', 'eg', 'eg_ampol', 'caltex_woolworths']  # there could be others
+    rewardsPointsEarned: str  # EveryDay Reward Points '+ 44 pts'
+    raw: Dict[str, Any]
 
-    displayName: str  # e.g. '3127 Balwyn', 'Balwyn', 'Caltex Woolworths / EG Balwyn', '0368 BIG W Doncaster'
-    storeName: str  # almost always the same as displayName
-    storeNo: str  # e.g. '3127', '0'
-    totalSpent: str  # e.g. '$11.40', '26.85'. Note: this is a misnomer; this is cost of items, not amount paid.
-    totalPointsEarned: str  # e.g. '12', '38.00'
-    date: str  # e.g. '16/02/2021'
-    transactionDate: datetime  # e.g. 2020-08-04 18:39:23
-    receiptKey: str  # e.g. 'U2FsdGVkX1+Q7oGFwGPJJxgRw...+GkBizWJbCu9QwZ+1+GFqM6/58w55k='
-    basketKey: str  # 20200804183836062051773127 date|time|...|storeno
+    @staticmethod
+    def list_transactions() -> Generator[List['Transaction'], None, None]:
+        """ Yields page list of Transactions for Woolies account """
+        next_page_token = "FIRST_PAGE"
+        while True:
+            data = gql_client.execute(fetch_transaction_query, variable_values={'nextPageToken': next_page_token})
+            if not data:
+                return
+            else:
+                yield [
+                    Transaction.from_response(data=item, group_title=months_transactions['title'])
+                    for months_transactions in data['rtlRewardsActivityFeed']['list']['groups']
+                    for item in months_transactions['items']
+                ]
+                if (next_page_token := data['rtlRewardsActivityFeed']['list']['nextPageToken']) is None:
+                    return
 
-    @property
-    def receipt(self) -> ReceiptDetails:
-        receipt = self.__dict__.get('_receipt')
-        if receipt is None:
-            receipt = get_receipt(self.receiptKey)
-            self.__dict__['_receipt'] = receipt
-        return receipt
+    @classmethod
+    def from_response(cls, data: Dict[str, Any], group_title: str):
 
-    @property
-    def transaction_date(self) -> datetime:  # 2020-01-02T03:04:05+10:00
-        return self.transactionDate.astimezone()
+        # Attempt Woolworth's partner identification
+        if (partner := data['icon']) == 'unknown_partner':
+            basename = os.path.basename(data['iconUrl'])
+            partner, *_ = basename.split('_logo.png')[0].split('_division')
+            if partner == 'supermarkets':
+                partner = 'woolworths'
 
-    @property
-    def total_paid(self) -> Decimal:
-        """ Amount paid; may vary from cost of items as gift-cards/discounts may be applied. """
-        return self.receipt.amount_paid
-
-    @property
-    def is_big_w(self) -> bool:
-        return PATTERN_BIG_W_PARTNER.match(self.displayName) is not None
-
-#
-
-
-def list_transactions(page: int = 0) -> Generator[List[Transaction], None, None]:
-    """ Yields list ("page") of Transactions for global Woolies account """
-    url = urljoin(endpoint, 'v1/rewards/member/ereceipts/transactions/list')
-    while True:
-        page += 1  # Endpoint indexes at 1
-        response = session.get(url=url, params={"page": page})
-        if not (data := response.json()['data']):
-            return
+        # Get _rough_ transaction date
+        id_ = data['id']
+        if re.match(r'S\d{4}W\d{3}SN\d{4}T\d{10}', id_):  # 'S3060W084SN2594T1667017441' store|...|date
+            transaction_date = datetime.fromtimestamp(int(id_[-10:]))
+        elif re.match(r'^\d+$', date_str := id_[:20]):  # '20200804183836062051773127' date|time|...|storeno
+            transaction_date = datetime.strptime(date_str, '%Y%m%d%H%M%S%f')
         else:
-            yield [Transaction.parse_obj(transaction) for transaction in data]
+            transaction_date = datetime.strptime(data['displayDate'], '%a %d %b')
+            transaction_date = transaction_date.replace(year=_two_months_ago.year)
+            if _two_months_ago < transaction_date and group_title not in ['This Month', 'Last Month']:
+                transaction_date -= relativedelta(years=1)
 
+        return cls(
+            id=data['id'],
+            date=transaction_date,
+            description=data['description'],
+            origin=data['transaction']['origin'],
+            value=data['transaction']['amountAsDollars'].replace('$', ''),
+            receiptId=data['receipt']['receiptId'] if data['receipt'] is not None else None,
+            partner=partner,
+            transactionType=data['transactionType'],
+            rewardsPointsEarned=data['displayValue'],
+            raw=data
+        )
 
-def get_receipt(receipt_key: str) -> ReceiptDetails:
-    url = urljoin(endpoint, 'v1/rewards/member/ereceipts/transactions/details')
-    body = {"receiptKey": receipt_key}
-    response = session.post(url=url, json=body)
-    return ReceiptDetails.from_raw(response.json()['data'])
+    def amount_paid(self) -> Decimal:
+        """ Amount paid; may vary from cost of items due to gift-cards/discounts at checkout """
+        return self.receipt().amount_paid
 
+    def receipt(self) -> ReceiptDetails:
+        # Lazy-load receipt
+        if (_receipt := self.__dict__.get('_receipt')) is None:
+            _receipt = ReceiptDetails.get_receipt(self.receiptId)
+            self.__dict__['_receipt'] = _receipt
+        return _receipt
 
-#
+    @property
+    def has_receipt(self) -> bool:
+        return self.receipt is not None
+
+    @property
+    def display_name(self) -> str:
+        return self.origin
+
 
 if __name__ == '__main__':
-    transactions = [y for x in list_transactions() for y in x]
+    transactions: List[Transaction] = [y for x in Transaction.list_transactions() for y in x]
     for trans in transactions:
-        if trans.receiptKey != '':  # Ignore partners w/o receipt data
-            print(trans.basketKey, trans.transaction_date, trans.total_paid, trans.json())
+        if not trans.has_receipt:  # Ignore partners w/o receipt data
+            print(trans.id, trans.date, trans.value, trans.json())

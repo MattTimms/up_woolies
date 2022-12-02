@@ -4,8 +4,8 @@ from decimal import Decimal
 from typing import Dict, List, Generator, Any, Literal, Optional
 from urllib.parse import urljoin
 
+import prance
 from dotenv import find_dotenv, load_dotenv
-from prance import ResolvingParser
 from pydantic import BaseModel, Extra, UUID4
 
 from utils import new_session, parse_money
@@ -20,7 +20,7 @@ session.headers.update({
     "Authorization": f"Bearer {os.environ['UP_TOKEN']}"
 })
 
-parser = ResolvingParser("https://raw.githubusercontent.com/up-banking/api/master/v1/openapi.json")
+parser = prance.ResolvingParser("https://raw.githubusercontent.com/up-banking/api/master/v1/openapi.json")
 
 
 # print(parser.specification)  # contains fully resolved specs as a dict
@@ -115,6 +115,7 @@ class TwoUpAccount(Account):
 
 class AllSpendingAccounts:
     """ Class for managing multiple transactional accounts; i.e. individual & joint accounts. """
+
     def __init__(self):
         self._accounts = [account for account in list_accounts()
                           if account['attributes']['accountType'] == 'TRANSACTIONAL']

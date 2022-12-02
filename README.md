@@ -62,6 +62,7 @@ UP_TOKEN=up:yeah:1234abcd...
 $ python main.py
 
 {'date': '2020-12-31T10:13:58+11:00',
+ 'partner': 'woolworths',
  'items': [{'amount': 0.94,
             'description': 'Tomato Truss Red',
             'quantity': None,
