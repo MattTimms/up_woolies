@@ -1,3 +1,7 @@
+# v1.3.1 - 03/01/2023
+
+- Added an MIT License
+
 # v1.3.0 - 02/12/2022
 
 Woolies API replaced the REST API endpoint for fetching transactions with a GraphQL API endpoint which provides similar
@@ -7,7 +11,7 @@ only 14 months.
 - Added better support of Woolies' partners' e-receipts; i.e. BigW, BWS
 - Changed woolies transaction interface models
 - Fixed support for Woolies ✨new✨ API
-- Depreciated woolies-auth code 
+- Depreciated woolies-auth code
 
 ## v1.2.0 - 10/04/2022
 
